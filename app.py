@@ -19,7 +19,7 @@ LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "70c03b304a4e165433b
 FIXED_RTP = 96.89
 
 # 管理員 UID
-ADMIN_UIDS = ["Ub9a0ddfd2b9fd49e3500fa08e2fbbbe7", "U543d02a7d79565a14d475bff5b357f05"]
+ADMIN_UIDS = ["Ub9a0ddfd2b9fd49e3500fa08e2fbbbe7", "U543d02a7d79565a14d475bff5b357f05", "U8ad3ca4119c006d2aa47c346d90de5cf"]
 
 USER_DATA_FILE = "user_data.json"
 TIME_CARDS_FILE = "time_cards.json"
