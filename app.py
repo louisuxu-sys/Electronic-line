@@ -18,6 +18,15 @@ LINE_ACCESS_TOKEN = os.environ.get("LINE_ACCESS_TOKEN", "6hvWsMRuAwdWKaiFq3F8kn4
 LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "70c03b304a4e165433b82c6d31cf14ec")
 FIXED_RTP = 96.89
 
+# 每款遊戲的房號上限
+GAME_ROOM_LIMITS = {
+    "賽特1": 3000,
+    "賽特2": 3000,
+    "孫行者": 500,
+    "赤三國": 1000,
+    "武俠": 500
+}
+
 # 管理員 UID
 ADMIN_UIDS = ["Ub9a0ddfd2b9fd49e3500fa08e2fbbbe7", "U543d02a7d79565a14d475bff5b357f05", "U8ad3ca4119c006d2aa47c346d90de5cf"]
 
@@ -255,7 +264,10 @@ def webhook():
                 chat_modes[uid] = "slot_choose_game"
                 line_reply(tk, sys_bubble("🎰 請選擇電子遊戲：", [
                     {"type": "action", "action": {"type": "message", "label": "賽特1", "text": "選遊戲:賽特1"}},
-                    {"type": "action", "action": {"type": "message", "label": "賽特2", "text": "選遊戲:賽特2"}}
+                    {"type": "action", "action": {"type": "message", "label": "賽特2", "text": "選遊戲:賽特2"}},
+                    {"type": "action", "action": {"type": "message", "label": "孫行者", "text": "選遊戲:孫行者"}},
+                    {"type": "action", "action": {"type": "message", "label": "赤三國", "text": "選遊戲:赤三國"}},
+                    {"type": "action", "action": {"type": "message", "label": "武俠", "text": "選遊戲:武俠"}}
                 ]))
             else:
                 line_reply(tk, sys_bubble("❌ 權限不足，請先儲值。"))
@@ -263,11 +275,21 @@ def webhook():
 
         elif mode == "slot_choose_game" and msg.startswith("選遊戲:"):
             game_name = msg.split(":")[-1]
+            max_room = GAME_ROOM_LIMITS.get(game_name, 3000)
             chat_modes[uid] = {"state": "slot_choose_room", "game": game_name}
-            line_reply(tk, text_with_back(f"✅ 已選 {game_name}\n請輸入房號 (1~3000)：\n例如：888"))
+            line_reply(tk, text_with_back(f"✅ 已選 {game_name}\n請輸入房號 (1~{max_room})：\n例如：888"))
             continue
 
         elif isinstance(mode, dict) and mode.get("state") == "slot_choose_room":
+            max_room = GAME_ROOM_LIMITS.get(mode["game"], 3000)
+            try:
+                room_num = int(msg)
+                if room_num < 1 or room_num > max_room:
+                    line_reply(tk, sys_bubble(f"⚠️ 房號超出範圍！\n{mode['game']} 的房號範圍為 1~{max_room}，請重新輸入。"))
+                    continue
+            except ValueError:
+                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字房號。"))
+                continue
             chat_modes[uid] = {"state": "slot_input_bet", "game": mode["game"], "room": msg}
             line_reply(tk, text_with_back(f"✅ 已鎖定：{mode['game']} 房號 {msg}\n\n第一步：請輸入【今日總下注額】"))
             continue
