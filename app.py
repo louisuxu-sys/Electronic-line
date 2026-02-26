@@ -14,7 +14,7 @@ import base64
 app = Flask(__name__)
 
 # --- 圖片基底 URL（部署後自動取得，或手動設定） ---
-BASE_URL = os.environ.get("BASE_URL", "https://electronic-bot.onrender.com")
+BASE_URL = os.environ.get("BASE_URL", "https://electronic-line.onrender.com")
 
 # --- 基礎配置 ---
 LINE_ACCESS_TOKEN = os.environ.get("LINE_ACCESS_TOKEN", "6hvWsMRuAwdWKaiFq3F8kn470UC6GaJmTui9QFi0KpIPJIsC1l1GuDYYFp2VMwF7nMG5A/1AhFcXobTbs/PGDIFA+LXg3Re5ZVRusDE8rqGqhO/V6+6/vYLunBZIGdOzLFFDW+7n8dxrkC/f5oljcwdB04t89/1O/w1cDnyilFU=")
