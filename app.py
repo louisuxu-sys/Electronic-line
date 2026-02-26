@@ -59,10 +59,37 @@ AT_GAMES = {
     "麻雀無雙":   {"room_limit": 200, "logo": "AT/麻雀無雙.png"}
 }
 
+# RG 遊戲廳
+RG_GAMES = {
+    "屠龍勇者":       {"room_limit": 300, "logo": "RG/屠龍勇者.png"},
+    "維京Fight":      {"room_limit": 40,  "logo": "RG/維京Fight.png"},
+    "大法師":         {"room_limit": 40,  "logo": "RG/大法師.png"},
+    "麻將發大財":     {"room_limit": 40,  "logo": "RG/麻將發大財.png"},
+    "爆爆怪妞":       {"room_limit": 40,  "logo": "RG/爆爆怪妞.png"},
+    "激鬥擂台":       {"room_limit": 40,  "logo": "RG/激鬥擂台.png"},
+    "奇幻魔藥":       {"room_limit": 40,  "logo": "RG/奇幻魔藥.png"},
+    "忍 Kunoichi":    {"room_limit": 100, "logo": "RG/忍 Kunoichi.png"},
+    "神鬼戰士":       {"room_limit": 40,  "logo": "RG/神鬼戰士.png"},
+    "強棒 HOMERUN":   {"room_limit": 40,  "logo": "RG/強棒 HOMERUN.png"},
+    "異星進化 UpUp":  {"room_limit": 40,  "logo": "RG/異星進化 UpUp.png"},
+    "金虎爺":         {"room_limit": 40,  "logo": "RG/金虎爺.png"},
+    "RG Star 777":    {"room_limit": 40,  "logo": "RG/RG Star 777.png"},
+    "秘寶探險":       {"room_limit": 40,  "logo": "RG/秘寶探險.png"},
+    "鬥雞":           {"room_limit": 40,  "logo": "RG/鬥雞.png"},
+    "High翻":         {"room_limit": 40,  "logo": "RG/High翻.png"},
+    "福爾摩斯":       {"room_limit": 40,  "logo": "RG/福爾摩斯.png"},
+    "狂野海盜":       {"room_limit": 40,  "logo": "RG/狂野海盜.png"},
+    "魚魚魚":         {"room_limit": 40,  "logo": "RG/魚魚魚.png"},
+    "魔獸世界":       {"room_limit": 40,  "logo": "RG/魔獸世界.png"},
+    "鮨 Sushi":       {"room_limit": 40,  "logo": "RG/鮨 Sushi.png"},
+    "果汁派對":       {"room_limit": 40,  "logo": "RG/果汁派對.png"},
+    "Alien Poker":    {"room_limit": 40,  "logo": "RG/Alien Poker.png"}
+}
+
 # 建立圖片 ID 對照表（避免中文 URL 問題）
 IMAGE_MAP = {}
 _img_id = 1
-for _games in [ATG_GAMES, AT_GAMES]:
+for _games in [ATG_GAMES, AT_GAMES, RG_GAMES]:
     for _name, _info in _games.items():
         _path = _info["logo"]
         if _path not in IMAGE_MAP.values():
@@ -78,6 +105,8 @@ def get_game_info(hall, game_name):
         return ATG_GAMES.get(game_name)
     elif hall == "AT":
         return AT_GAMES.get(game_name)
+    elif hall == "RG":
+        return RG_GAMES.get(game_name)
     return None
 
 def get_logo_url(logo_path):
@@ -378,7 +407,8 @@ def webhook():
                 chat_modes[uid] = "slot_choose_hall"
                 line_reply(tk, sys_bubble("🎰 請選擇遊戲館：", [
                     {"type": "action", "action": {"type": "message", "label": "ATG 遊戲館", "text": "選館:ATG"}},
-                    {"type": "action", "action": {"type": "message", "label": "AT 遊戲館", "text": "選館:AT"}}
+                    {"type": "action", "action": {"type": "message", "label": "AT 遊戲館", "text": "選館:AT"}},
+                    {"type": "action", "action": {"type": "message", "label": "RG 遊戲廳", "text": "選館:RG"}}
                 ]))
             else:
                 line_reply(tk, sys_bubble("❌ 權限不足，請先儲值。"))
@@ -392,6 +422,9 @@ def webhook():
             elif hall == "AT":
                 chat_modes[uid] = {"state": "slot_choose_game", "hall": "AT"}
                 line_reply(tk, build_game_carousel("AT", AT_GAMES))
+            elif hall == "RG":
+                chat_modes[uid] = {"state": "slot_choose_game", "hall": "RG"}
+                line_reply(tk, build_game_carousel("RG", RG_GAMES))
             else:
                 line_reply(tk, sys_bubble("⚠️ 無效的遊戲館，請重新選擇。"))
             continue
@@ -400,7 +433,7 @@ def webhook():
             parts = msg.split(":")
             hall = parts[1]
             page = int(parts[2])
-            games = ATG_GAMES if hall == "ATG" else AT_GAMES
+            games = ATG_GAMES if hall == "ATG" else (RG_GAMES if hall == "RG" else AT_GAMES)
             line_reply(tk, build_game_carousel(hall, games, page))
             continue
 
