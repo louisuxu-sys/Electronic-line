@@ -2,7 +2,6 @@ import json
 import requests
 from flask import Flask, request, jsonify, abort, send_from_directory
 import os
-import urllib.parse
 import uuid
 from datetime import datetime, timedelta, timezone
 import traceback
@@ -60,10 +59,18 @@ AT_GAMES = {
     "麻雀無雙":   {"room_limit": 200, "logo": "AT/麻雀無雙.png"}
 }
 
-# 合併查詢用
-ALL_GAMES = {}
-ALL_GAMES.update(ATG_GAMES)
-ALL_GAMES.update({f"AT_{k}": v for k, v in AT_GAMES.items()})
+# 建立圖片 ID 對照表（避免中文 URL 問題）
+IMAGE_MAP = {}
+_img_id = 1
+for _games in [ATG_GAMES, AT_GAMES]:
+    for _name, _info in _games.items():
+        _path = _info["logo"]
+        if _path not in IMAGE_MAP.values():
+            IMAGE_MAP[str(_img_id)] = _path
+            _img_id += 1
+
+# 反向查詢：logo_path -> image_id
+IMAGE_PATH_TO_ID = {v: k for k, v in IMAGE_MAP.items()}
 
 def get_game_info(hall, game_name):
     """根據館別和遊戲名取得設定"""
@@ -74,8 +81,9 @@ def get_game_info(hall, game_name):
     return None
 
 def get_logo_url(logo_path):
-    """產生圖片完整 URL"""
-    return f"{BASE_URL}/images/{urllib.parse.quote(logo_path)}"
+    """產生圖片完整 URL（使用數字 ID，避免中文編碼問題）"""
+    img_id = IMAGE_PATH_TO_ID.get(logo_path, "0")
+    return f"{BASE_URL}/img/{img_id}"
 
 # 管理員 UID
 ADMIN_UIDS = ["Ub9a0ddfd2b9fd49e3500fa08e2fbbbe7", "U543d02a7d79565a14d475bff5b357f05", "U8ad3ca4119c006d2aa47c346d90de5cf"]
@@ -144,7 +152,7 @@ def calculate_slot_logic(total_bet, score_rate):
 # ==================== Flex 構建 ====================
 def build_game_carousel(hall, games_dict, page=1):
     """建立帶有 LOGO 的遊戲選擇 Flex Carousel（每頁最多 12 款）"""
-    MAX_PER_PAGE = 12
+    MAX_PER_PAGE = 11
     items = list(games_dict.items())
     total_pages = (len(items) + MAX_PER_PAGE - 1) // MAX_PER_PAGE
     start = (page - 1) * MAX_PER_PAGE
@@ -463,9 +471,15 @@ def webhook():
 
     return jsonify({"status": "ok"})
 
-@app.route("/images/<path:filename>", methods=["GET"])
-def serve_image(filename):
-    return send_from_directory(os.path.dirname(os.path.abspath(__file__)), filename)
+@app.route("/img/<img_id>", methods=["GET"])
+def serve_image(img_id):
+    logo_path = IMAGE_MAP.get(img_id)
+    if not logo_path:
+        abort(404)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    directory = os.path.join(base_dir, os.path.dirname(logo_path))
+    filename = os.path.basename(logo_path)
+    return send_from_directory(directory, filename)
 
 @app.route("/", methods=["GET"])
 @app.route("/health", methods=["GET"])
