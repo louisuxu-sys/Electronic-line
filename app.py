@@ -157,26 +157,30 @@ def verify_signature(body, signature):
     hash = hmac.new(LINE_CHANNEL_SECRET.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).digest()
     return base64.b64encode(hash).decode('utf-8') == signature
 
-# ==================== 核心邏輯：電子預測 ====================
-def calculate_slot_logic(total_bet, score_rate):
-    expected_return = total_bet * (FIXED_RTP / 100.0)
-    actual_gain = total_bet * (score_rate / 100.0)
-    bonus_space = expected_return - actual_gain
-    if score_rate >= FIXED_RTP:
-        if score_rate > 110:
-            level, color = "⚠️ 高位震盪", "#9B59B6"
-            desc = f"機台今日表現({score_rate}%)遠超預期，正處於極端吐分波段，隨時可能反轉，建議謹慎操作。"
-        else:
-            level, color = "🌟 熱機中", "#E67E22"
-            desc = "機台數據飽和但動能強勁，目前屬於「連續爆分」波段，建議小量跟進觀察。"
+# ==================== 核心邏輯：電子預測（ROI 模型） ====================
+def calculate_slot_logic(investment, balance):
+    profit = balance - investment
+    roi = (profit / investment * 100) if investment > 0 else 0
+    expected_roi = FIXED_RTP - 100  # 例如 96.89 - 100 = -3.11%
+    gap = roi - expected_roi  # 寮差：正值表示超過預期，負值表示低於預期
+
+    if roi >= 10:
+        level, color = "⚠️ 高位震盪", "#9B59B6"
+        desc = f"目前回報率 {roi:+.1f}%，遠超機台預期，正處於極端吐分波段，隨時可能反轉，建議謹慎操作。"
+    elif roi >= 0:
+        level, color = "🌟 熱機中", "#E67E22"
+        desc = f"目前回報率 {roi:+.1f}%，機台表現良好，屬於「連續出分」波段，建議小量跟進觀察。"
+    elif gap < -20:
+        level, color = "🔥 極致推薦", "#FF4444"
+        desc = f"目前回報率 {roi:+.1f}%，機台積累大量預算，目前處於大回補窗口，爆發力極強！"
+    elif gap < -5:
+        level, color = "✅ 推薦", "#2ECC71"
+        desc = f"目前回報率 {roi:+.1f}%，機台狀態正向，仍有補償空間，穩定操作。"
     else:
-        if bonus_space >= 500000:
-            level, color, desc = "🔥 極致推薦", "#FF4444", "機台積累大量預算，目前處於大回補窗口，爆發力極強！"
-        elif bonus_space > 0:
-            level, color, desc = "✅ 推薦", "#2ECC71", "機台狀態正向，仍有補償空間，穩定操作。"
-        else:
-            level, color, desc = "☁️ 觀望", "#7F8C8D", "數據趨於平衡，建議更換房間或等待下一個週期。"
-    return {"space": bonus_space, "level": level, "color": color, "desc": desc}
+        level, color = "☁️ 觀望", "#7F8C8D"
+        desc = f"目前回報率 {roi:+.1f}%，數據趨於平衡，建議更換房間或等待下一個週期。"
+
+    return {"roi": roi, "profit": profit, "level": level, "color": color, "desc": desc}
 
 # ==================== Flex 構建 ====================
 def build_game_carousel(hall, games_dict, page=1):
@@ -462,29 +466,32 @@ def webhook():
             except ValueError:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字房號。"))
                 continue
-            chat_modes[uid] = {"state": "slot_input_bet", "hall": hall, "game": mode["game"], "room": msg}
-            line_reply(tk, text_with_back(f"✅ 已鎖定：【{hall}】{mode['game']} 房號 {msg}\n\n第一步：請輸入【今日總下注額】"))
+            chat_modes[uid] = {"state": "slot_input_invest", "hall": hall, "game": mode["game"], "room": msg}
+            line_reply(tk, text_with_back(f"✅ 已鎖定：【{hall}】{mode['game']} 房號 {msg}\n\n第一步：請輸入【總投入金額】\n(例如：5000)"))
             continue
 
-        elif isinstance(mode, dict) and mode.get("state") == "slot_input_bet":
+        elif isinstance(mode, dict) and mode.get("state") == "slot_input_invest":
             try:
-                bet = float(msg)
-                chat_modes[uid] = {"state": "slot_input_rate", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"], "total_bet": bet}
-                line_reply(tk, text_with_back(f"💰 總下注額已設定：{bet:,.0f}\n\n第二步：請輸入【今日得分率】\n(例如：48)"))
+                invest = float(msg)
+                if invest <= 0:
+                    line_reply(tk, sys_bubble("⚠️ 總投入金額必須大於 0，請重新輸入。"))
+                    continue
+                chat_modes[uid] = {"state": "slot_input_balance", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"], "investment": invest}
+                line_reply(tk, text_with_back(f"💰 總投入已設定：{invest:,.0f}\n\n第二步：請輸入【目前餘額】\n(例如：3200)"))
             except:
-                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字下注額。"))
+                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字金額。"))
             continue
 
-        elif isinstance(mode, dict) and mode.get("state") == "slot_input_rate":
+        elif isinstance(mode, dict) and mode.get("state") == "slot_input_balance":
             try:
-                rate = float(msg)
-                total_bet = mode["total_bet"]
+                balance = float(msg)
+                investment = mode["investment"]
                 room_display = f"【{mode.get('hall')}】{mode['game']} 房號:{mode['room']}"
-                res = calculate_slot_logic(total_bet, rate)
+                res = calculate_slot_logic(investment, balance)
                 line_reply(tk, build_slot_flex(room_display, res))
-                chat_modes[uid] = {"state": "slot_input_bet", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"]}
+                chat_modes[uid] = {"state": "slot_input_invest", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"]}
             except:
-                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字得分率。"))
+                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字餘額。"))
             continue
 
         # 儲值入口
