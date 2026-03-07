@@ -398,7 +398,8 @@ def build_slot_flex(room, res, signals=None):
                 {"type": "text", "text": "電子數據分析系統", "color": "#ffffff", "weight": "bold", "size": "md", "align": "center"}
             ]},
             "body": {"type": "box", "layout": "vertical", "contents": body_contents},
-            "footer": {"type": "box", "layout": "vertical", "contents": [
+            "footer": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": [
+                {"type": "button", "action": {"type": "message", "label": "🔄 判斷下一桌", "text": "判斷下一桌"}, "style": "primary", "color": "#E67E22"},
                 {"type": "button", "action": {"type": "message", "label": "返回主選單", "text": "返回主選單"}, "style": "primary", "color": "#2C3E50"}
             ]}
         }
@@ -673,6 +674,16 @@ def webhook():
                 chat_modes[uid] = {"state": "slot_input_invest", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"]}
             except:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字金額。"))
+            continue
+
+        # 判斷下一桌：回到輸入房號步驟（同遊戲）
+        if msg == "判斷下一桌" and isinstance(mode, dict) and mode.get("hall") and mode.get("game"):
+            hall = mode["hall"]
+            game_name = mode["game"]
+            info = get_game_info(hall, game_name)
+            max_room = info["room_limit"] if info else 200
+            chat_modes[uid] = {"state": "slot_choose_room", "hall": hall, "game": game_name}
+            line_reply(tk, text_with_back(f"🔄 繼續判斷【{hall}】{game_name}\n請輸入下一桌房號 (1~{max_room})："))
             continue
 
         # 儲值入口
