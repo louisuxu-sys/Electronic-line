@@ -149,10 +149,16 @@ def generate_signal(game_name):
     total_target = random.randint(8, 13)
     result = {}
 
-    # 1. 紅球（百倍球）：最多1個，約15%機率出現
-    if random.random() < 0.15:
+    # 1. 紅球（百倍球）：最多1個，約15%機率；綠球：約25%機率，但有紅球就不出綠球
+    has_red = random.random() < 0.15
+    if has_red:
         result["百倍球"] = 1
         total_target -= 1
+    elif random.random() < 0.25:
+        green_count = random.randint(1, min(2, total_target))
+        if green_count > 0:
+            result["綠球"] = green_count
+            total_target -= green_count
 
     # 2. 甲蟲：0~3個
     beetle_count = random.choices([0, 1, 2, 3], weights=[40, 30, 20, 10])[0]
@@ -165,13 +171,6 @@ def generate_signal(game_name):
         if random.random() < 0.12:
             result["黃金聖甲蟲"] = 1
             total_target -= 1
-
-    # 4. 綠球：0~2個，約25%機率出現
-    if random.random() < 0.25:
-        green_count = random.randint(1, min(2, total_target))
-        if green_count > 0:
-            result["綠球"] = green_count
-            total_target -= green_count
 
     # 5. 主要符號：刀、弓、眼、蛇 隨機分配剩餘數量（每種最多7）
     main_symbols = ["刀", "弓", "眼", "蛇"]
