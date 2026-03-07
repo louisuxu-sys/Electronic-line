@@ -599,6 +599,15 @@ def webhook():
             line_reply(tk, text_with_back(f"✅ 已選【{hall}】{game_name}\n請輸入房號 (1~{max_room})：\n例如：88"))
             continue
 
+        elif msg == "判斷下一桌" and isinstance(mode, dict) and mode.get("hall") and mode.get("game"):
+            hall = mode["hall"]
+            game_name = mode["game"]
+            info = get_game_info(hall, game_name)
+            max_room = info["room_limit"] if info else 200
+            chat_modes[uid] = {"state": "slot_choose_room", "hall": hall, "game": game_name}
+            line_reply(tk, text_with_back(f"🔄 繼續判斷【{hall}】{game_name}\n請輸入下一桌房號 (1~{max_room})："))
+            continue
+
         elif isinstance(mode, dict) and mode.get("state") == "slot_choose_room":
             hall = mode.get("hall", "ATG")
             info = get_game_info(hall, mode["game"])
@@ -674,16 +683,6 @@ def webhook():
                 chat_modes[uid] = {"state": "slot_input_invest", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"]}
             except:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字金額。"))
-            continue
-
-        # 判斷下一桌：回到輸入房號步驟（同遊戲）
-        if msg == "判斷下一桌" and isinstance(mode, dict) and mode.get("hall") and mode.get("game"):
-            hall = mode["hall"]
-            game_name = mode["game"]
-            info = get_game_info(hall, game_name)
-            max_room = info["room_limit"] if info else 200
-            chat_modes[uid] = {"state": "slot_choose_room", "hall": hall, "game": game_name}
-            line_reply(tk, text_with_back(f"🔄 繼續判斷【{hall}】{game_name}\n請輸入下一桌房號 (1~{max_room})："))
             continue
 
         # 儲值入口
