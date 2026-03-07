@@ -86,6 +86,27 @@ RG_GAMES = {
     "Alien Poker":    {"room_limit": 40,  "logo": "RG/Alien Poker.png"}
 }
 
+# 賽特訊號圖片路徑
+SETTE_SIGNALS = {
+    "刀": "ATG/賽特訊號/刀.png",
+    "弓": "ATG/賽特訊號/弓.png",
+    "眼": "ATG/賽特訊號/眼.png",
+    "蛇": "ATG/賽特訊號/蛇.png",
+    "甲蟲": "ATG/賽特訊號/甲蟲.png",
+    "百倍球": "ATG/賽特訊號/百倍球.png",
+    "綠球": "ATG/賽特訊號/綠球.png",
+}
+SETTE2_SIGNALS = {
+    "刀": "ATG/賽特2訊號/刀.png",
+    "弓": "ATG/賽特2訊號/弓.png",
+    "眼": "ATG/賽特2訊號/眼.png",
+    "蛇": "ATG/賽特2訊號/蛇.png",
+    "甲蟲": "ATG/賽特2訊號/甲蟲.png",
+    "百倍球": "ATG/賽特2訊號/百倍球.png",
+    "綠球": "ATG/賽特2訊號/綠球.png",
+    "黃金聖甲蟲": "ATG/賽特2訊號/黃金聖甲蟲.png",
+}
+
 # 建立圖片 ID 對照表（避免中文 URL 問題）
 IMAGE_MAP = {}
 _img_id = 1
@@ -94,6 +115,12 @@ for _games in [ATG_GAMES, AT_GAMES, RG_GAMES]:
         _path = _info["logo"]
         if _path not in IMAGE_MAP.values():
             IMAGE_MAP[str(_img_id)] = _path
+            _img_id += 1
+# 加入訊號圖片
+for _sig_dict in [SETTE_SIGNALS, SETTE2_SIGNALS]:
+    for _sname, _spath in _sig_dict.items():
+        if _spath not in IMAGE_MAP.values():
+            IMAGE_MAP[str(_img_id)] = _spath
             _img_id += 1
 
 # 反向查詢：logo_path -> image_id
@@ -113,6 +140,87 @@ def get_logo_url(logo_path):
     """產生圖片完整 URL（使用數字 ID，避免中文編碼問題）"""
     img_id = IMAGE_PATH_TO_ID.get(logo_path, "0")
     return f"{BASE_URL}/img/{img_id}"
+
+def generate_signal(game_name):
+    """產生賽特/賽特2 的隨機訊號組合"""
+    is_sette2 = (game_name == "賽特2")
+    sig_map = SETTE2_SIGNALS if is_sette2 else SETTE_SIGNALS
+
+    total_target = random.randint(8, 13)
+    result = {}
+
+    # 1. 紅球（百倍球）：最多1個，約15%機率出現
+    if random.random() < 0.15:
+        result["百倍球"] = 1
+        total_target -= 1
+
+    # 2. 甲蟲：0~3個
+    beetle_count = random.choices([0, 1, 2, 3], weights=[40, 30, 20, 10])[0]
+    if beetle_count > 0:
+        result["甲蟲"] = beetle_count
+        total_target -= beetle_count
+
+    # 3. 黃金聖甲蟲（僅賽特2）：甲蟲=3時不出現
+    if is_sette2 and beetle_count < 3:
+        if random.random() < 0.12:
+            result["黃金聖甲蟲"] = 1
+            total_target -= 1
+
+    # 4. 綠球：0~2個，約25%機率出現
+    if random.random() < 0.25:
+        green_count = random.randint(1, min(2, total_target))
+        if green_count > 0:
+            result["綠球"] = green_count
+            total_target -= green_count
+
+    # 5. 主要符號：刀、弓、眼、蛇 隨機分配剩餘數量（每種最多7）
+    main_symbols = ["刀", "弓", "眼", "蛇"]
+    random.shuffle(main_symbols)
+    remaining = max(total_target, 0)
+
+    for i, sym in enumerate(main_symbols):
+        if remaining <= 0:
+            break
+        if i == len(main_symbols) - 1:
+            count = min(remaining, 7)
+        else:
+            count = random.randint(1, min(7, remaining))
+        result[sym] = count
+        remaining -= count
+
+    # 組合成列表 [(名稱, 數量, 圖片URL), ...]
+    signals = []
+    for name, count in result.items():
+        url = get_logo_url(sig_map[name])
+        signals.append({"name": name, "count": count, "url": url})
+    return signals
+
+def build_signal_flex(signals, game_name):
+    """建立訊號顯示的 Flex bubble"""
+    rows = []
+    for sig in signals:
+        row = {
+            "type": "box", "layout": "horizontal", "alignItems": "center", "margin": "sm",
+            "contents": [
+                {"type": "image", "url": sig["url"], "size": "xxs", "aspectMode": "cover", "aspectRatio": "1:1", "flex": 0},
+                {"type": "text", "text": f"  {sig['name']} ×{sig['count']}", "size": "sm", "color": "#333333", "flex": 3, "gravity": "center"}
+            ]
+        }
+        rows.append(row)
+
+    return {
+        "type": "bubble", "size": "kilo",
+        "header": {"type": "box", "layout": "vertical", "backgroundColor": "#1A1A2E", "paddingAll": "md", "contents": [
+            {"type": "text", "text": f"🔮 {game_name} 訊號預測", "color": "#FFD700", "weight": "bold", "size": "md", "align": "center"}
+        ]},
+        "body": {"type": "box", "layout": "vertical", "paddingAll": "lg", "contents": [
+            {"type": "text", "text": "本次推薦訊號組合：", "size": "xs", "color": "#888888", "margin": "none"},
+            {"type": "separator", "margin": "md"},
+            *rows,
+            {"type": "separator", "margin": "md"},
+            {"type": "text", "text": f"共 {sum(s['count'] for s in signals)} 個訊號", "size": "xs", "color": "#888888", "align": "end", "margin": "sm"}
+        ]}
+    }
 
 # 管理員 UID
 ADMIN_UIDS = ["Ub9a0ddfd2b9fd49e3500fa08e2fbbbe7", "U543d02a7d79565a14d475bff5b357f05", "U8ad3ca4119c006d2aa47c346d90de5cf"]
@@ -488,7 +596,13 @@ def webhook():
                 investment = mode["investment"]
                 room_display = f"【{mode.get('hall')}】{mode['game']} 房號:{mode['room']}"
                 res = calculate_slot_logic(investment, balance)
-                line_reply(tk, build_slot_flex(room_display, res))
+                messages = [build_slot_flex(room_display, res)]
+                # 賽特1/賽特2 額外附帶訊號預測
+                if mode["game"] in ("賽特1", "賽特2"):
+                    signals = generate_signal(mode["game"])
+                    sig_bubble = build_signal_flex(signals, mode["game"])
+                    messages.append({"type": "flex", "altText": f"{mode['game']} 訊號預測", "contents": sig_bubble})
+                line_reply(tk, messages)
                 chat_modes[uid] = {"state": "slot_input_invest", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"]}
             except:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字餘額。"))
