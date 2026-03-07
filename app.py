@@ -19,8 +19,6 @@ BASE_URL = os.environ.get("BASE_URL", "https://electronic-line.onrender.com")
 # --- 基礎配置 ---
 LINE_ACCESS_TOKEN = os.environ.get("LINE_ACCESS_TOKEN", "6hvWsMRuAwdWKaiFq3F8kn470UC6GaJmTui9QFi0KpIPJIsC1l1GuDYYFp2VMwF7nMG5A/1AhFcXobTbs/PGDIFA+LXg3Re5ZVRusDE8rqGqhO/V6+6/vYLunBZIGdOzLFFDW+7n8dxrkC/f5oljcwdB04t89/1O/w1cDnyilFU=")
 LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "70c03b304a4e165433b82c6d31cf14ec")
-FIXED_RTP = 96.89
-
 # ==================== 遊戲館配置 ====================
 # ATG 遊戲館
 ATG_GAMES = {
@@ -264,52 +262,55 @@ def verify_signature(body, signature):
     hash = hmac.new(LINE_CHANNEL_SECRET.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).digest()
     return base64.b64encode(hash).decode('utf-8') == signature
 
-# ==================== 核心邏輯：電子預測（ROI + 轉數模型） ====================
-def calculate_slot_logic(investment, balance, no_hit_spins=0, prev1=0, prev2=0):
-    profit = balance - investment
-    roi = (profit / investment * 100) if investment > 0 else 0
-    expected_roi = FIXED_RTP - 100  # -3.11%
-    gap = roi - expected_roi
-
-    # 轉數熱度加成：未開轉數越高 → 越可能回補
-    spin_bonus = 0
-    if no_hit_spins >= 150:
-        spin_bonus = 15
+# ==================== 核心邏輯：電子預測（轉數模型） ====================
+def calculate_slot_logic(investment, no_hit_spins=0, prev1=0, prev2=0):
+    # 轉數熱度：未開獎轉數越高 → 分數越高
+    spin_score = 0
+    if no_hit_spins >= 200:
+        spin_score = 40
+    elif no_hit_spins >= 150:
+        spin_score = 30
     elif no_hit_spins >= 100:
-        spin_bonus = 10
+        spin_score = 20
     elif no_hit_spins >= 50:
-        spin_bonus = 5
+        spin_score = 10
+    elif no_hit_spins >= 20:
+        spin_score = 5
 
-    # 前兩轉出分趨勢：連續低分 → 加分，連續高分 → 減分
-    trend_bonus = 0
-    avg_prev = (prev1 + prev2) / 2 if (prev1 + prev2) > 0 else 0
-    if investment > 0 and avg_prev > 0:
-        prev_ratio = avg_prev / investment * 100
-        if prev_ratio < 1:
-            trend_bonus = 5
-        elif prev_ratio > 20:
-            trend_bonus = -5
+    # 前兩轉趨勢：連續低分/沒開 → 加分，連續高分 → 減分
+    trend_score = 0
+    if investment > 0:
+        for pv in [prev1, prev2]:
+            ratio = pv / investment * 100
+            if ratio == 0:
+                trend_score += 5
+            elif ratio < 2:
+                trend_score += 3
+            elif ratio > 30:
+                trend_score -= 8
+            elif ratio > 15:
+                trend_score -= 4
 
     # 綜合分數
-    score = gap + spin_bonus + trend_bonus
+    score = spin_score + trend_score
 
-    if roi >= 10:
-        level, color = "⚠️ 高位震盪", "#9B59B6"
-        desc = f"目前回報率 {roi:+.1f}%，遠超機台預期，正處於極端吐分波段，隨時可能反轉，建議謹慎操作。"
-    elif roi >= 0 and score < 15:
-        level, color = "🌟 熱機中", "#E67E22"
-        desc = f"目前回報率 {roi:+.1f}%，機台表現良好，屬於「連續出分」波段，建議小量跟進觀察。"
-    elif score >= 30 and roi < -30:
+    if score >= 40:
         level, color = "🔥 極致推薦", "#FF4444"
-        desc = f"目前回報率 {roi:+.1f}%，已空轉 {no_hit_spins} 轉，機台積累大量預算，大回補窗口，爆發力極強！"
-    elif score >= 10:
+        desc = f"已空轉 {no_hit_spins} 轉，機台積累大量預算，正處於大回補窗口，爆發力極強！"
+    elif score >= 25:
         level, color = "✅ 推薦", "#2ECC71"
-        desc = f"目前回報率 {roi:+.1f}%，空轉 {no_hit_spins} 轉，機台仍有補償空間，穩定操作。"
+        desc = f"空轉 {no_hit_spins} 轉，機台狀態正向，仍有補償空間，建議穩定操作。"
+    elif score >= 10:
+        level, color = "🌟 熱機中", "#E67E22"
+        desc = f"空轉 {no_hit_spins} 轉，機台逐步進入回補區間，可小量跟進觀察。"
+    elif score >= 0 and (prev1 + prev2) > investment * 0.3:
+        level, color = "⚠️ 高位震盪", "#9B59B6"
+        desc = f"前兩轉出分較高，機台可能正處於吐分尾段，隨時反轉，建議謹慎操作。"
     else:
         level, color = "☁️ 觀望", "#7F8C8D"
-        desc = f"目前回報率 {roi:+.1f}%，數據趨於平衡，建議更換房間或等待下一個週期。"
+        desc = f"空轉 {no_hit_spins} 轉，數據尚未明朗，建議更換房間或等待下一個週期。"
 
-    return {"roi": roi, "profit": profit, "level": level, "color": color, "desc": desc}
+    return {"score": score, "level": level, "color": color, "desc": desc}
 
 # ==================== Flex 構建 ====================
 def build_game_carousel(hall, games_dict, page=1):
@@ -630,19 +631,10 @@ def webhook():
                 if invest <= 0:
                     line_reply(tk, sys_bubble("⚠️ 總投入金額必須大於 0，請重新輸入。"))
                     continue
-                chat_modes[uid] = {"state": "slot_input_balance", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"], "investment": invest}
-                line_reply(tk, text_with_back(f"💰 總投入已設定：{invest:,.0f}\n\n第二步：請輸入【目前餘額】\n(例如：3200)"))
+                chat_modes[uid] = {"state": "slot_input_nohit", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"], "investment": invest}
+                line_reply(tk, text_with_back(f"💰 總投入：{invest:,.0f}\n\n第二步：請輸入【未開獎轉數】\n(已經空轉幾轉沒中，例如：80)"))
             except:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字金額。"))
-            continue
-
-        elif isinstance(mode, dict) and mode.get("state") == "slot_input_balance":
-            try:
-                balance = float(msg)
-                chat_modes[uid] = {**mode, "state": "slot_input_nohit", "balance": balance}
-                line_reply(tk, text_with_back(f"💰 目前餘額：{balance:,.0f}\n\n第三步：請輸入【未開獎轉數】\n(已經空轉幾轉沒中，例如：80)"))
-            except:
-                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字餘額。"))
             continue
 
         elif isinstance(mode, dict) and mode.get("state") == "slot_input_nohit":
@@ -652,7 +644,7 @@ def webhook():
                     line_reply(tk, sys_bubble("⚠️ 轉數不能為負數，請重新輸入。"))
                     continue
                 chat_modes[uid] = {**mode, "state": "slot_input_prev1", "nohit": nohit}
-                line_reply(tk, text_with_back(f"🎰 空轉：{nohit} 轉\n\n第四步：請輸入【前一轉開出金額】\n(例如：50，沒開輸入 0)"))
+                line_reply(tk, text_with_back(f"🎰 空轉：{nohit} 轉\n\n第三步：請輸入【前一轉開出金額】\n(例如：50，沒開輸入 0)"))
             except:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字轉數。"))
             continue
@@ -661,7 +653,7 @@ def webhook():
             try:
                 prev1 = float(msg)
                 chat_modes[uid] = {**mode, "state": "slot_input_prev2", "prev1": prev1}
-                line_reply(tk, text_with_back(f"🎰 前一轉：{prev1:,.0f}\n\n第五步：請輸入【前二轉開出金額】\n(例如：0，沒開輸入 0)"))
+                line_reply(tk, text_with_back(f"🎰 前一轉：{prev1:,.0f}\n\n第四步：請輸入【前二轉開出金額】\n(例如：0，沒開輸入 0)"))
             except:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字金額。"))
             continue
@@ -670,11 +662,10 @@ def webhook():
             try:
                 prev2 = float(msg)
                 investment = mode["investment"]
-                balance = mode["balance"]
                 nohit = mode["nohit"]
                 prev1 = mode["prev1"]
                 room_display = f"【{mode.get('hall')}】{mode['game']} 房號:{mode['room']}"
-                res = calculate_slot_logic(investment, balance, nohit, prev1, prev2)
+                res = calculate_slot_logic(investment, nohit, prev1, prev2)
                 # 賽特1/賽特2 附帶訊號預測（合併在同一個 bubble）
                 signals = None
                 if mode["game"] in ("賽特1", "賽特2"):
