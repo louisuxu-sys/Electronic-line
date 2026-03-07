@@ -344,7 +344,28 @@ def build_game_carousel(hall, games_dict, page=1):
         "contents": {"type": "carousel", "contents": bubbles}
     }
 
-def build_slot_flex(room, res):
+def build_slot_flex(room, res, signals=None):
+    body_contents = [
+        {"type": "text", "text": f"機台房號：{room}", "size": "xxs", "color": "#888888", "margin": "sm"},
+        {"type": "box", "layout": "vertical", "margin": "lg", "backgroundColor": "#F4F6F7", "paddingAll": "md", "cornerRadius": "md", "contents": [
+            {"type": "text", "text": res['level'], "weight": "bold", "size": "lg", "color": res['color'], "align": "center"},
+            {"type": "text", "text": res['desc'], "size": "xs", "wrap": True, "align": "center", "margin": "xs", "color": "#333333"}
+        ]}
+    ]
+    # 如果有訊號，合併到同一個 bubble
+    if signals:
+        body_contents.append({"type": "separator", "margin": "lg"})
+        body_contents.append({"type": "text", "text": "🔮 訊號預測", "weight": "bold", "size": "sm", "color": "#1A1A2E", "margin": "lg", "align": "center"})
+        for sig in signals:
+            row = {
+                "type": "box", "layout": "horizontal", "alignItems": "center", "margin": "sm",
+                "contents": [
+                    {"type": "image", "url": sig["url"], "size": "xxs", "aspectMode": "cover", "aspectRatio": "1:1", "flex": 0},
+                    {"type": "text", "text": f"  {sig['name']} ×{sig['count']}", "size": "sm", "color": "#333333", "flex": 3, "gravity": "center"}
+                ]
+            }
+            body_contents.append(row)
+
     return {
         "type": "flex", "altText": "電子預測報告",
         "contents": {
@@ -352,13 +373,7 @@ def build_slot_flex(room, res):
             "header": {"type": "box", "layout": "vertical", "backgroundColor": "#2C3E50", "contents": [
                 {"type": "text", "text": "電子數據分析系統", "color": "#ffffff", "weight": "bold", "size": "md", "align": "center"}
             ]},
-            "body": {"type": "box", "layout": "vertical", "contents": [
-                {"type": "text", "text": f"機台房號：{room}", "size": "xxs", "color": "#888888", "margin": "sm"},
-                {"type": "box", "layout": "vertical", "margin": "lg", "backgroundColor": "#F4F6F7", "paddingAll": "md", "cornerRadius": "md", "contents": [
-                    {"type": "text", "text": res['level'], "weight": "bold", "size": "lg", "color": res['color'], "align": "center"},
-                    {"type": "text", "text": res['desc'], "size": "xs", "wrap": True, "align": "center", "margin": "xs", "color": "#333333"}
-                ]}
-            ]},
+            "body": {"type": "box", "layout": "vertical", "contents": body_contents},
             "footer": {"type": "box", "layout": "vertical", "contents": [
                 {"type": "button", "action": {"type": "message", "label": "返回主選單", "text": "返回主選單"}, "style": "primary", "color": "#2C3E50"}
             ]}
@@ -593,13 +608,11 @@ def webhook():
                 investment = mode["investment"]
                 room_display = f"【{mode.get('hall')}】{mode['game']} 房號:{mode['room']}"
                 res = calculate_slot_logic(investment, balance)
-                messages = [build_slot_flex(room_display, res)]
-                # 賽特1/賽特2 額外附帶訊號預測
+                # 賽特1/賽特2 附帶訊號預測（合併在同一個 bubble）
+                signals = None
                 if mode["game"] in ("賽特1", "賽特2"):
                     signals = generate_signal(mode["game"])
-                    sig_bubble = build_signal_flex(signals, mode["game"])
-                    messages.append({"type": "flex", "altText": f"{mode['game']} 訊號預測", "contents": sig_bubble})
-                line_reply(tk, messages)
+                line_reply(tk, build_slot_flex(room_display, res, signals))
                 chat_modes[uid] = {"state": "slot_input_invest", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"]}
             except:
                 line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字餘額。"))
