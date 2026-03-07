@@ -155,10 +155,8 @@ def generate_signal(game_name):
         result["百倍球"] = 1
         total_target -= 1
     elif random.random() < 0.25:
-        green_count = random.randint(1, min(2, total_target))
-        if green_count > 0:
-            result["綠球"] = green_count
-            total_target -= green_count
+        result["綠球"] = 1
+        total_target -= 1
 
     # 2. 甲蟲：0~3個
     beetle_count = random.choices([0, 1, 2, 3], weights=[40, 30, 20, 10])[0]
