@@ -142,14 +142,14 @@ def get_logo_url(logo_path):
     return f"{BASE_URL}/img/{img_id}"
 
 def generate_signal(game_name):
-    """產生賽特/賽特2 的隨機訊號組合"""
+    """產生賽特/賽特2 的隨機訊號組合（限制2~4種不同符號）"""
     is_sette2 = (game_name == "賽特2")
     sig_map = SETTE2_SIGNALS if is_sette2 else SETTE_SIGNALS
 
     total_target = random.randint(8, 13)
     result = {}
 
-    # 1. 紅球（百倍球）：最多1個，約15%機率；綠球：約25%機率，但有紅球就不出綠球
+    # 1. 紅球（百倍球）最多1個，約15%；綠球約25%，互斥
     has_red = random.random() < 0.15
     if has_red:
         result["百倍球"] = 1
@@ -170,22 +170,24 @@ def generate_signal(game_name):
             result["黃金聖甲蟲"] = 1
             total_target -= 1
 
-    # 5. 主要符號：刀、弓、眼、蛇 隨機分配剩餘數量（每種最多7）
+    # 4. 主要符號：從刀弓眼蛇中隨機選2~3種來分配剩餘數量
     main_symbols = ["刀", "弓", "眼", "蛇"]
     random.shuffle(main_symbols)
+    pick_count = random.randint(2, 3)
+    chosen = main_symbols[:pick_count]
     remaining = max(total_target, 0)
 
-    for i, sym in enumerate(main_symbols):
+    for i, sym in enumerate(chosen):
         if remaining <= 0:
             break
-        if i == len(main_symbols) - 1:
+        if i == len(chosen) - 1:
             count = min(remaining, 7)
         else:
             count = random.randint(1, min(7, remaining))
         result[sym] = count
         remaining -= count
 
-    # 組合成列表 [(名稱, 數量, 圖片URL), ...]
+    # 組合成列表
     signals = []
     for name, count in result.items():
         url = get_logo_url(sig_map[name])
@@ -262,25 +264,47 @@ def verify_signature(body, signature):
     hash = hmac.new(LINE_CHANNEL_SECRET.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).digest()
     return base64.b64encode(hash).decode('utf-8') == signature
 
-# ==================== 核心邏輯：電子預測（ROI 模型） ====================
-def calculate_slot_logic(investment, balance):
+# ==================== 核心邏輯：電子預測（ROI + 轉數模型） ====================
+def calculate_slot_logic(investment, balance, no_hit_spins=0, prev1=0, prev2=0):
     profit = balance - investment
     roi = (profit / investment * 100) if investment > 0 else 0
-    expected_roi = FIXED_RTP - 100  # 例如 96.89 - 100 = -3.11%
-    gap = roi - expected_roi  # 寮差：正值表示超過預期，負值表示低於預期
+    expected_roi = FIXED_RTP - 100  # -3.11%
+    gap = roi - expected_roi
+
+    # 轉數熱度加成：未開轉數越高 → 越可能回補
+    spin_bonus = 0
+    if no_hit_spins >= 150:
+        spin_bonus = 15
+    elif no_hit_spins >= 100:
+        spin_bonus = 10
+    elif no_hit_spins >= 50:
+        spin_bonus = 5
+
+    # 前兩轉出分趨勢：連續低分 → 加分，連續高分 → 減分
+    trend_bonus = 0
+    avg_prev = (prev1 + prev2) / 2 if (prev1 + prev2) > 0 else 0
+    if investment > 0 and avg_prev > 0:
+        prev_ratio = avg_prev / investment * 100
+        if prev_ratio < 1:
+            trend_bonus = 5
+        elif prev_ratio > 20:
+            trend_bonus = -5
+
+    # 綜合分數
+    score = gap + spin_bonus + trend_bonus
 
     if roi >= 10:
         level, color = "⚠️ 高位震盪", "#9B59B6"
         desc = f"目前回報率 {roi:+.1f}%，遠超機台預期，正處於極端吐分波段，隨時可能反轉，建議謹慎操作。"
-    elif roi >= 0:
+    elif roi >= 0 and score < 15:
         level, color = "🌟 熱機中", "#E67E22"
         desc = f"目前回報率 {roi:+.1f}%，機台表現良好，屬於「連續出分」波段，建議小量跟進觀察。"
-    elif gap < -20:
+    elif score >= 30 and roi < -30:
         level, color = "🔥 極致推薦", "#FF4444"
-        desc = f"目前回報率 {roi:+.1f}%，機台積累大量預算，目前處於大回補窗口，爆發力極強！"
-    elif gap < -5:
+        desc = f"目前回報率 {roi:+.1f}%，已空轉 {no_hit_spins} 轉，機台積累大量預算，大回補窗口，爆發力極強！"
+    elif score >= 10:
         level, color = "✅ 推薦", "#2ECC71"
-        desc = f"目前回報率 {roi:+.1f}%，機台狀態正向，仍有補償空間，穩定操作。"
+        desc = f"目前回報率 {roi:+.1f}%，空轉 {no_hit_spins} 轉，機台仍有補償空間，穩定操作。"
     else:
         level, color = "☁️ 觀望", "#7F8C8D"
         desc = f"目前回報率 {roi:+.1f}%，數據趨於平衡，建議更換房間或等待下一個週期。"
@@ -605,9 +629,42 @@ def webhook():
         elif isinstance(mode, dict) and mode.get("state") == "slot_input_balance":
             try:
                 balance = float(msg)
+                chat_modes[uid] = {**mode, "state": "slot_input_nohit", "balance": balance}
+                line_reply(tk, text_with_back(f"💰 目前餘額：{balance:,.0f}\n\n第三步：請輸入【未開獎轉數】\n(已經空轉幾轉沒中，例如：80)"))
+            except:
+                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字餘額。"))
+            continue
+
+        elif isinstance(mode, dict) and mode.get("state") == "slot_input_nohit":
+            try:
+                nohit = int(msg)
+                if nohit < 0:
+                    line_reply(tk, sys_bubble("⚠️ 轉數不能為負數，請重新輸入。"))
+                    continue
+                chat_modes[uid] = {**mode, "state": "slot_input_prev1", "nohit": nohit}
+                line_reply(tk, text_with_back(f"🎰 空轉：{nohit} 轉\n\n第四步：請輸入【前一轉開出金額】\n(例如：50，沒開輸入 0)"))
+            except:
+                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字轉數。"))
+            continue
+
+        elif isinstance(mode, dict) and mode.get("state") == "slot_input_prev1":
+            try:
+                prev1 = float(msg)
+                chat_modes[uid] = {**mode, "state": "slot_input_prev2", "prev1": prev1}
+                line_reply(tk, text_with_back(f"🎰 前一轉：{prev1:,.0f}\n\n第五步：請輸入【前二轉開出金額】\n(例如：0，沒開輸入 0)"))
+            except:
+                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字金額。"))
+            continue
+
+        elif isinstance(mode, dict) and mode.get("state") == "slot_input_prev2":
+            try:
+                prev2 = float(msg)
                 investment = mode["investment"]
+                balance = mode["balance"]
+                nohit = mode["nohit"]
+                prev1 = mode["prev1"]
                 room_display = f"【{mode.get('hall')}】{mode['game']} 房號:{mode['room']}"
-                res = calculate_slot_logic(investment, balance)
+                res = calculate_slot_logic(investment, balance, nohit, prev1, prev2)
                 # 賽特1/賽特2 附帶訊號預測（合併在同一個 bubble）
                 signals = None
                 if mode["game"] in ("賽特1", "賽特2"):
@@ -615,7 +672,7 @@ def webhook():
                 line_reply(tk, build_slot_flex(room_display, res, signals))
                 chat_modes[uid] = {"state": "slot_input_invest", "hall": mode.get("hall"), "game": mode["game"], "room": mode["room"]}
             except:
-                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字餘額。"))
+                line_reply(tk, sys_bubble("⚠️ 格式錯誤，請輸入純數字金額。"))
             continue
 
         # 儲值入口
